@@ -4,10 +4,10 @@
 
 #define LED_PINS_COUNT      4 
 
-#define LED_RED_PIN         NRF_GPIO_PIN_MAP(0, 6) 
-#define LED_GREEN_PIN       NRF_GPIO_PIN_MAP(0, 8) 
-#define LED_BLUE_PIN        NRF_GPIO_PIN_MAP(1, 9) 
-#define LED_SECONDARY_RED   NRF_GPIO_PIN_MAP(0, 12) 
+#define LED_UNUSED_P006     NRF_GPIO_PIN_MAP(0, 6) 
+#define LED_CLICK_RED       NRF_GPIO_PIN_MAP(0, 8)
+#define LED_HOLD_BLUE       NRF_GPIO_PIN_MAP(1, 9)
+#define LED_HOLD_GREEN      NRF_GPIO_PIN_MAP(0, 12)
 
 #define BUTTON_1_PIN        NRF_GPIO_PIN_MAP(1, 6) 
 
@@ -15,10 +15,10 @@
 #define DEBOUNCE_TIME_MS        50 
 #define TICK_INTERVAL_MS        5 
 
-static bool is_green_on = false;
+static bool is_click_red_on = false;
 static bool button_is_down = false;
 static uint32_t press_duration_ms = 0;
-static uint32_t blue_red_blink_state = 0;
+static uint32_t hold_blink_state = 0;
 
 void my_led_on(uint32_t pin)
 {
@@ -32,7 +32,7 @@ void my_led_off(uint32_t pin)
 
 void gpio_init()
 {
-    uint32_t led_pins[] = {LED_RED_PIN, LED_GREEN_PIN, LED_BLUE_PIN, LED_SECONDARY_RED};
+    uint32_t led_pins[] = {LED_CLICK_RED, LED_HOLD_BLUE, LED_HOLD_GREEN, LED_UNUSED_P006};
     for (int i = 0; i < LED_PINS_COUNT; i++)
     {
         nrf_gpio_cfg_output(led_pins[i]); 
@@ -44,41 +44,41 @@ void gpio_init()
 
 void handle_short_click()
 {
-    blue_red_blink_state = 0; 
-    my_led_off(LED_BLUE_PIN);
-    my_led_off(LED_SECONDARY_RED);
+    hold_blink_state = 0; 
+    my_led_off(LED_HOLD_BLUE);
+    my_led_off(LED_HOLD_GREEN);
 
-    if (is_green_on)
+    if (is_click_red_on)
     {
-        my_led_off(LED_GREEN_PIN);
-        is_green_on = false;
+        my_led_off(LED_CLICK_RED);
+        is_click_red_on = false;
     }
     else
     {
-        my_led_on(LED_GREEN_PIN);
-        is_green_on = true;
+        my_led_on(LED_CLICK_RED);
+        is_click_red_on = true;
     }
 }
 
 void handle_long_press()
 {
-    if (is_green_on)
+    if (is_click_red_on)
     {
-        my_led_off(LED_GREEN_PIN);
-        is_green_on = false;
+        my_led_off(LED_CLICK_RED);
+        is_click_red_on = false;
     }
     
-    if (blue_red_blink_state == 0)
+    if (hold_blink_state == 0)
     {
-        my_led_on(LED_BLUE_PIN);
-        my_led_off(LED_SECONDARY_RED);
-        blue_red_blink_state = 1;
+        my_led_on(LED_HOLD_BLUE);
+        my_led_off(LED_HOLD_GREEN);
+        hold_blink_state = 1;
     }
     else
     {
-        my_led_off(LED_BLUE_PIN);
-        my_led_on(LED_SECONDARY_RED);
-        blue_red_blink_state = 0;
+        my_led_off(LED_HOLD_BLUE);
+        my_led_on(LED_HOLD_GREEN);
+        hold_blink_state = 0;
     }
 }
 
@@ -122,11 +122,11 @@ int main(void)
                 button_is_down = false;
             }
             
-            if (blue_red_blink_state != 0)
+            if (hold_blink_state != 0)
             {
-                blue_red_blink_state = 0;
-                my_led_off(LED_BLUE_PIN);
-                my_led_off(LED_SECONDARY_RED);
+                hold_blink_state = 0;
+                my_led_off(LED_HOLD_BLUE);
+                my_led_off(LED_HOLD_GREEN);
             }
         }
         
