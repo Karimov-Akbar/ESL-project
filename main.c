@@ -1,135 +1,242 @@
 #include "nrf_delay.h"
-#include <stdbool.h>
 #include "nrf_gpio.h"
+#include "nrfx_pwm.h"
+#include "nrfx_gpiote.h"
+#include <stdbool.h>
+#include <stdint.h>
 
-#define LED_PINS_COUNT      4 
+#define LED_1_GREEN     NRF_GPIO_PIN_MAP(0, 6)
+#define LED_2_RED       NRF_GPIO_PIN_MAP(0, 8)
+#define LED_2_GREEN     NRF_GPIO_PIN_MAP(1, 9)
+#define LED_2_BLUE      NRF_GPIO_PIN_MAP(0, 12)
+#define LED_RED         LED_2_RED
+#define LED_BLUE        LED_2_BLUE  
+#define LED_GREEN       LED_2_GREEN
+#define BUTTON_PIN      NRF_GPIO_PIN_MAP(1, 6)
+#define PWM_TOP_VALUE   1000
+#define PWM_STEP        10
+#define PWM_UPDATE_INTERVAL_MS  20
+#define DOUBLE_CLICK_TIMEOUT_MS  400
+#define DEBOUNCE_MS              50
 
-#define LED_UNUSED_P006     NRF_GPIO_PIN_MAP(0, 6) 
-#define LED_CLICK_RED       NRF_GPIO_PIN_MAP(0, 8)
-#define LED_HOLD_BLUE       NRF_GPIO_PIN_MAP(1, 9)
-#define LED_HOLD_GREEN      NRF_GPIO_PIN_MAP(0, 12)
+static nrfx_pwm_t m_pwm = NRFX_PWM_INSTANCE(0);
 
-#define BUTTON_1_PIN        NRF_GPIO_PIN_MAP(1, 6) 
+static nrf_pwm_values_individual_t pwm_values;
+static nrf_pwm_sequence_t const pwm_seq = {
+    .values.p_individual = &pwm_values,
+    .length = NRF_PWM_VALUES_LENGTH(pwm_values),
+    .repeats = 0,
+    .end_delay = 0
+};
 
-#define LONG_PRESS_THRESHOLD_MS 500 
-#define DEBOUNCE_TIME_MS        50 
-#define TICK_INTERVAL_MS        5 
+static volatile bool blinking_active = false;
+static volatile uint32_t last_button_time = 0;
+static volatile uint32_t first_click_time = 0;
+static volatile bool waiting_for_second_click = false;
 
-static bool is_click_red_on = false;
-static bool button_is_down = false;
-static uint32_t press_duration_ms = 0;
-static uint32_t hold_blink_state = 0;
+static int16_t current_duty = 0;
+static int8_t duty_direction = 1;
+static uint8_t current_led_index = 0;
+static const uint8_t led_count = 3;
 
-void my_led_on(uint32_t pin)
+static volatile uint32_t system_ticks = 0;
+static uint32_t last_pwm_update = 0;
+
+/**
+ * @brief
+ */
+static uint32_t millis(void)
 {
-    nrf_gpio_pin_clear(pin);
+    return system_ticks;
 }
 
-void my_led_off(uint32_t pin)
+/**
+ * @brief 
+ */
+static uint16_t duty_to_compare(uint16_t duty)
 {
-    nrf_gpio_pin_set(pin);
+    return (uint16_t)(PWM_TOP_VALUE - duty);
 }
 
-void gpio_init()
+/**
+ * @brief
+ */
+static void update_pwm_output(void)
 {
-    uint32_t led_pins[] = {LED_CLICK_RED, LED_HOLD_BLUE, LED_HOLD_GREEN, LED_UNUSED_P006};
-    for (int i = 0; i < LED_PINS_COUNT; i++)
-    {
-        nrf_gpio_cfg_output(led_pins[i]); 
-        nrf_gpio_pin_set(led_pins[i]);
-    }
-
-    nrf_gpio_cfg_input(BUTTON_1_PIN, NRF_GPIO_PIN_PULLUP);
-}
-
-void handle_short_click()
-{
-    hold_blink_state = 0; 
-    my_led_off(LED_HOLD_BLUE);
-    my_led_off(LED_HOLD_GREEN);
-
-    if (is_click_red_on)
-    {
-        my_led_off(LED_CLICK_RED);
-        is_click_red_on = false;
-    }
-    else
-    {
-        my_led_on(LED_CLICK_RED);
-        is_click_red_on = true;
-    }
-}
-
-void handle_long_press()
-{
-    if (is_click_red_on)
-    {
-        my_led_off(LED_CLICK_RED);
-        is_click_red_on = false;
+    pwm_values.channel_0 = PWM_TOP_VALUE;
+    pwm_values.channel_1 = PWM_TOP_VALUE;
+    pwm_values.channel_2 = PWM_TOP_VALUE;
+    
+    uint16_t compare_value = duty_to_compare(current_duty);
+    
+    switch (current_led_index) {
+        case 0:
+            pwm_values.channel_0 = compare_value;
+            break;
+        case 1:
+            pwm_values.channel_1 = compare_value;
+            break;
+        case 2:
+            pwm_values.channel_2 = compare_value;
+            break;
     }
     
-    if (hold_blink_state == 0)
-    {
-        my_led_on(LED_HOLD_BLUE);
-        my_led_off(LED_HOLD_GREEN);
-        hold_blink_state = 1;
+    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+}
+
+/**
+ * @brief
+ */
+static void update_duty_cycle(void)
+{
+    if (!blinking_active) {
+        return;
     }
-    else
-    {
-        my_led_off(LED_HOLD_BLUE);
-        my_led_on(LED_HOLD_GREEN);
-        hold_blink_state = 0;
+    
+    uint32_t current_time = millis();
+    if (current_time - last_pwm_update < PWM_UPDATE_INTERVAL_MS) {
+        return;
+    }
+    last_pwm_update = current_time;
+    
+    current_duty += duty_direction * PWM_STEP;
+    
+    if (current_duty >= 1000) {
+        current_duty = 1000;
+        duty_direction = -1;
+    } else if (current_duty <= 0) {
+        current_duty = 0;
+        duty_direction = 1;
+        
+        current_led_index = (current_led_index + 1) % led_count;
+    }
+    
+    update_pwm_output();
+}
+
+/**
+ * @brief
+ */
+static void gpiote_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
+{
+    if (pin != BUTTON_PIN || action != NRF_GPIOTE_POLARITY_HITOLO) {
+        return;
+    }
+    
+    uint32_t current_time = millis();
+    
+    if (current_time - last_button_time < DEBOUNCE_MS) {
+        return;
+    }
+    last_button_time = current_time;
+    
+    if (waiting_for_second_click) {
+        if (current_time - first_click_time < DOUBLE_CLICK_TIMEOUT_MS) {
+            waiting_for_second_click = false;
+            
+            blinking_active = !blinking_active;
+            
+            if (blinking_active) {
+                current_led_index = 0;
+                current_duty = 0;
+                duty_direction = 1;
+                last_pwm_update = current_time;
+            }
+            
+            update_pwm_output();
+        } else {
+            first_click_time = current_time;
+            waiting_for_second_click = true;
+        }
+    } else {
+        first_click_time = current_time;
+        waiting_for_second_click = true;
     }
 }
 
+/**
+ * @brief
+ */
+static void gpiote_init(void)
+{
+    nrfx_err_t err_code;
+    
+    err_code = nrfx_gpiote_init();
+    if (err_code != NRFX_SUCCESS && err_code != NRFX_ERROR_INVALID_STATE) {
+        return;
+    }
+    
+    nrfx_gpiote_in_config_t button_config = NRFX_GPIOTE_CONFIG_IN_SENSE_HITOLO(true);
+    button_config.pull = NRF_GPIO_PIN_PULLUP;
+    
+    err_code = nrfx_gpiote_in_init(BUTTON_PIN, &button_config, gpiote_event_handler);
+    if (err_code == NRFX_SUCCESS) {
+        nrfx_gpiote_in_event_enable(BUTTON_PIN, true);
+    }
+}
+
+/**
+ * @brief
+ */
+static void pwm_init(void)
+{
+    nrfx_pwm_config_t pwm_config = NRFX_PWM_DEFAULT_CONFIG;
+    pwm_config.output_pins[0] = LED_RED;
+    pwm_config.output_pins[1] = LED_BLUE;
+    pwm_config.output_pins[2] = LED_GREEN;
+    pwm_config.output_pins[3] = NRFX_PWM_PIN_NOT_USED;
+    pwm_config.base_clock = NRF_PWM_CLK_1MHz;
+    pwm_config.count_mode = NRF_PWM_MODE_UP;
+    pwm_config.top_value = PWM_TOP_VALUE;
+    pwm_config.load_mode = NRF_PWM_LOAD_INDIVIDUAL;
+    pwm_config.step_mode = NRF_PWM_STEP_AUTO;
+    
+    nrfx_err_t err_code = nrfx_pwm_init(&m_pwm, &pwm_config, NULL);
+    if (err_code != NRFX_SUCCESS) {
+        return;
+    }
+    
+    pwm_values.channel_0 = PWM_TOP_VALUE;
+    pwm_values.channel_1 = PWM_TOP_VALUE;
+    pwm_values.channel_2 = PWM_TOP_VALUE;
+    pwm_values.channel_3 = 0;
+    
+    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+}
+
+/**
+ * @brief
+ */
 int main(void)
 {
-    gpio_init();
-
-    while (true)
-    {
-        if (!nrf_gpio_pin_read(BUTTON_1_PIN))
-        {
-            if (!button_is_down)
-            {
-                press_duration_ms = 0;
-                button_is_down = true;
-            }
-            else
-            {
-                press_duration_ms += TICK_INTERVAL_MS;
-                
-                if (press_duration_ms >= LONG_PRESS_THRESHOLD_MS)
-                {
-                    handle_long_press();
-                    
-                    press_duration_ms = 0; 
-                }
-            }
-        }
-        else
-        {
-            if (button_is_down)
-            {
-                uint32_t press_duration = press_duration_ms;
-
-                if (press_duration < LONG_PRESS_THRESHOLD_MS && press_duration >= DEBOUNCE_TIME_MS)
-                {
-                    handle_short_click();
-                }
-                
-                press_duration_ms = 0;
-                button_is_down = false;
-            }
-            
-            if (hold_blink_state != 0)
-            {
-                hold_blink_state = 0;
-                my_led_off(LED_HOLD_BLUE);
-                my_led_off(LED_HOLD_GREEN);
+    pwm_init();
+    gpiote_init();
+    
+    pwm_values.channel_0 = 0;
+    pwm_values.channel_1 = 0;
+    pwm_values.channel_2 = 0;
+    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+    nrf_delay_ms(100);
+    
+    pwm_values.channel_0 = PWM_TOP_VALUE;
+    pwm_values.channel_1 = PWM_TOP_VALUE;
+    pwm_values.channel_2 = PWM_TOP_VALUE;
+    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+    
+    system_ticks = 0;
+    last_pwm_update = 0;
+    
+    while (true) {
+        update_duty_cycle();
+        
+        if (waiting_for_second_click) {
+            uint32_t current_time = millis();
+            if (current_time - first_click_time >= DOUBLE_CLICK_TIMEOUT_MS) {
+                waiting_for_second_click = false;
             }
         }
         
-        nrf_delay_ms(TICK_INTERVAL_MS);
+        nrf_delay_ms(1);
+        system_ticks++;
     }
 }
