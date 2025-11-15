@@ -30,11 +30,15 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/ringbuf/nrf_ringbuf.c \
   $(SDK_ROOT)/components/libraries/strerror/nrf_strerror.c \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_gpiote.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
   $(PROJ_DIR)/main.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
 
 # Include folders common to all targets
 INC_FOLDERS += \
+  $(SDK_ROOT)/modules/nrfx/drivers/include \
   $(SDK_ROOT)/components \
   $(SDK_ROOT)/modules/nrfx/mdk \
   $(PROJ_DIR) \
