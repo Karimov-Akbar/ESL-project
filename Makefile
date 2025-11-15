@@ -4,7 +4,6 @@ OUTPUT_DIRECTORY := _build
 DFU_PACKAGE      := $(OUTPUT_DIRECTORY)/nrf52840_xxaa.dfu
 DFU_PORT         ?= /dev/ttyACM0
 
-
 SDK_ROOT ?= /home/user/devel/esl-nsdk
 PROJ_DIR := .
 
@@ -30,11 +29,11 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/ringbuf/nrf_ringbuf.c \
   $(SDK_ROOT)/components/libraries/strerror/nrf_strerror.c \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
-  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_gpiote.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/prs/nrfx_prs.c \
   $(PROJ_DIR)/main.c \
-  $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
+  $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c
 
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -56,12 +55,14 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/experimental_section_vars \
   $(SDK_ROOT)/components/libraries/delay \
   $(SDK_ROOT)/integration/nrfx \
+  $(SDK_ROOT)/integration/nrfx/legacy \
   $(SDK_ROOT)/components/drivers_nrf/nrf_soc_nosd \
   $(SDK_ROOT)/components/libraries/atomic \
   $(SDK_ROOT)/components/boards \
   $(SDK_ROOT)/components/libraries/memobj \
   $(SDK_ROOT)/external/fprintf \
   $(SDK_ROOT)/components/libraries/log/src \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/prs \
 
 # Libraries common to all targets
 LIB_FILES += \
@@ -79,6 +80,27 @@ CFLAGS += -DCONFIG_GPIO_AS_PINRESET
 CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DMBR_PRESENT
 CFLAGS += -DNRF52840_XXAA
+CFLAGS += -DNRFX_GPIOTE_ENABLED=1
+CFLAGS += -DNRFX_GPIOTE_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
+CFLAGS += -DNRFX_PWM_ENABLED=1
+CFLAGS += -DNRFX_PWM0_ENABLED=1
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT0_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT1_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT2_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT3_PIN=31
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_BASE_CLOCK=4
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_COUNT_MODE=0
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_TOP_VALUE=1000
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_LOAD_MODE=0
+CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_STEP_MODE=0
+CFLAGS += -DGPIOTE_ENABLED=1
+CFLAGS += -DGPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
+CFLAGS += -DNRFX_PRS_ENABLED=1
+CFLAGS += -DNRFX_PRS_BOX_0_ENABLED=1
+CFLAGS += -DNRFX_PRS_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_SYSTICK_ENABLED=1
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
 CFLAGS += -Wall -Werror
@@ -89,6 +111,7 @@ CFLAGS += -fno-builtin -fshort-enums
 
 # C++ flags common to all targets
 CXXFLAGS += $(OPT)
+
 # Assembler flags common to all targets
 ASMFLAGS += -g3
 ASMFLAGS += -mcpu=cortex-m4
@@ -120,7 +143,6 @@ nrf52840_xxaa: ASMFLAGS += -D__STACK_SIZE=8192
 # that may need symbols provided by these libraries.
 LIB_FILES += -lc -lnosys -lm
 
-
 .PHONY: default help
 
 # Default target - first one defined
@@ -133,7 +155,6 @@ help:
 	@echo		flash      - flashing binary
 
 TEMPLATE_PATH := $(SDK_ROOT)/components/toolchain/gcc
-
 
 include $(TEMPLATE_PATH)/Makefile.common
 
