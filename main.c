@@ -9,117 +9,199 @@
 #define LED_2_RED       NRF_GPIO_PIN_MAP(0, 8)
 #define LED_2_GREEN     NRF_GPIO_PIN_MAP(1, 9)
 #define LED_2_BLUE      NRF_GPIO_PIN_MAP(0, 12)
-#define LED_RED         LED_2_RED
-#define LED_BLUE        LED_2_BLUE  
-#define LED_GREEN       LED_2_GREEN
 #define BUTTON_PIN      NRF_GPIO_PIN_MAP(1, 6)
+#define DEVICE_ID       7205
+#define DEFAULT_HUE_PERCENT  (DEVICE_ID % 100)
+
 #define PWM_TOP_VALUE   1000
-#define PWM_STEP        10
-#define PWM_UPDATE_INTERVAL_MS  20
+
 #define DOUBLE_CLICK_TIMEOUT_MS  400
 #define DEBOUNCE_MS              50
+#define MODE_BLINK_SLOW_MS       1000
+#define MODE_BLINK_FAST_MS       200
+#define VALUE_CHANGE_INTERVAL_MS 50
 
-static nrfx_pwm_t m_pwm = NRFX_PWM_INSTANCE(0);
+typedef enum {
+    MODE_NO_INPUT = 0,
+    MODE_HUE,
+    MODE_SATURATION,
+    MODE_BRIGHTNESS
+} input_mode_t;
 
-static nrf_pwm_values_individual_t pwm_values;
-static nrf_pwm_sequence_t const pwm_seq = {
-    .values.p_individual = &pwm_values,
-    .length = NRF_PWM_VALUES_LENGTH(pwm_values),
+typedef struct {
+    uint16_t h;
+    uint8_t s;
+    uint8_t v;
+} hsv_color_t;
+
+static nrfx_pwm_t m_pwm_rgb = NRFX_PWM_INSTANCE(0);
+static nrfx_pwm_t m_pwm_indicator = NRFX_PWM_INSTANCE(1);
+
+static nrf_pwm_values_individual_t pwm_rgb_values;
+static nrf_pwm_sequence_t const pwm_rgb_seq = {
+    .values.p_individual = &pwm_rgb_values,
+    .length = NRF_PWM_VALUES_LENGTH(pwm_rgb_values),
     .repeats = 0,
     .end_delay = 0
 };
 
-static volatile bool blinking_active = false;
+static nrf_pwm_values_individual_t pwm_indicator_values;
+static nrf_pwm_sequence_t const pwm_indicator_seq = {
+    .values.p_individual = &pwm_indicator_values,
+    .length = NRF_PWM_VALUES_LENGTH(pwm_indicator_values),
+    .repeats = 0,
+    .end_delay = 0
+};
+
+static volatile input_mode_t current_mode = MODE_NO_INPUT;
+static hsv_color_t current_hsv;
 static volatile uint32_t last_button_time = 0;
 static volatile uint32_t first_click_time = 0;
 static volatile bool waiting_for_second_click = false;
-
-static int16_t current_duty = 0;
-static int8_t duty_direction = 1;
-static uint8_t current_led_index = 0;
-static const uint8_t led_count = 3;
-
 static volatile uint32_t system_ticks = 0;
-static uint32_t last_pwm_update = 0;
+static uint32_t last_mode_blink_time = 0;
+static uint32_t last_value_change_time = 0;
+static bool mode_led_state = false;
 
-/**
- * @brief
- */
 static uint32_t millis(void)
 {
     return system_ticks;
 }
 
-/**
- * @brief 
- */
-static uint16_t duty_to_compare(uint16_t duty)
+static void hsv_to_rgb_simple(uint16_t h, uint8_t s, uint8_t v, uint16_t *r, uint16_t *g, uint16_t *b)
 {
-    return (uint16_t)(PWM_TOP_VALUE - duty);
-}
-
-/**
- * @brief
- */
-static void update_pwm_output(void)
-{
-    pwm_values.channel_0 = PWM_TOP_VALUE;
-    pwm_values.channel_1 = PWM_TOP_VALUE;
-    pwm_values.channel_2 = PWM_TOP_VALUE;
+    h = h % 360;
     
-    uint16_t compare_value = duty_to_compare(current_duty);
+    if (s == 0) {
+        *r = *g = *b = (v * PWM_TOP_VALUE) / 100;
+        return;
+    }
     
-    switch (current_led_index) {
+    uint8_t sector = h / 60;
+    uint16_t remainder = (h % 60) * 6;
+    
+    uint32_t p = ((uint32_t)v * (100 - s)) / 100;
+    uint32_t q = ((uint32_t)v * (100 - ((s * remainder) / 360))) / 100;
+    uint32_t t = ((uint32_t)v * (100 - ((s * (360 - remainder)) / 360))) / 100;
+    
+    uint16_t v_pwm = (v * PWM_TOP_VALUE) / 100;
+    uint16_t p_pwm = (p * PWM_TOP_VALUE) / 100;
+    uint16_t q_pwm = (q * PWM_TOP_VALUE) / 100;
+    uint16_t t_pwm = (t * PWM_TOP_VALUE) / 100;
+    
+    switch(sector) {
         case 0:
-            pwm_values.channel_0 = compare_value;
+            *r = v_pwm; *g = t_pwm; *b = p_pwm;
             break;
         case 1:
-            pwm_values.channel_1 = compare_value;
+            *r = q_pwm; *g = v_pwm; *b = p_pwm;
             break;
         case 2:
-            pwm_values.channel_2 = compare_value;
+            *r = p_pwm; *g = v_pwm; *b = t_pwm;
+            break;
+        case 3:
+            *r = p_pwm; *g = q_pwm; *b = v_pwm;
+            break;
+        case 4
+            *r = t_pwm; *g = p_pwm; *b = v_pwm;
+            break;
+        default:
+            *r = v_pwm; *g = p_pwm; *b = q_pwm;
+            break;
+    }
+}
+
+static void update_rgb_led(void)
+{
+    uint16_t r, g, b;
+    hsv_to_rgb_simple(current_hsv.h, current_hsv.s, current_hsv.v, &r, &g, &b);
+    
+    pwm_rgb_values.channel_0 = r;
+    pwm_rgb_values.channel_1 = b;
+    pwm_rgb_values.channel_2 = g;
+    pwm_rgb_values.channel_3 = 0;
+    
+    nrfx_pwm_simple_playback(&m_pwm_rgb, &pwm_rgb_seq, 1, NRFX_PWM_FLAG_LOOP);
+}
+
+static void update_mode_indicator(void)
+{
+    uint32_t current_time = millis();
+    uint32_t blink_interval;
+    
+    switch (current_mode) {
+        case MODE_NO_INPUT:
+            pwm_indicator_values.channel_0 = 0;
+            break;
+            
+        case MODE_HUE:
+            blink_interval = MODE_BLINK_SLOW_MS;
+            if (current_time - last_mode_blink_time >= blink_interval) {
+                mode_led_state = !mode_led_state;
+                pwm_indicator_values.channel_0 = mode_led_state ? PWM_TOP_VALUE : 0;
+                last_mode_blink_time = current_time;
+            }
+            break;
+            
+        case MODE_SATURATION:
+            blink_interval = MODE_BLINK_FAST_MS;
+            if (current_time - last_mode_blink_time >= blink_interval) {
+                mode_led_state = !mode_led_state;
+                pwm_indicator_values.channel_0 = mode_led_state ? PWM_TOP_VALUE : 0;
+                last_mode_blink_time = current_time;
+            }
+            break;
+            
+        case MODE_BRIGHTNESS:
+            pwm_indicator_values.channel_0 = PWM_TOP_VALUE;
             break;
     }
     
-    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+    nrfx_pwm_simple_playback(&m_pwm_indicator, &pwm_indicator_seq, 1, NRFX_PWM_FLAG_LOOP);
 }
 
-/**
- * @brief
- */
-static void update_duty_cycle(void)
+static void handle_value_change(void)
 {
-    if (!blinking_active) {
+    bool is_button_pressed = (nrf_gpio_pin_read(BUTTON_PIN) == 0);
+    
+    if (!is_button_pressed || current_mode == MODE_NO_INPUT) {
         return;
     }
     
     uint32_t current_time = millis();
-    if (current_time - last_pwm_update < PWM_UPDATE_INTERVAL_MS) {
+    if (current_time - last_value_change_time < VALUE_CHANGE_INTERVAL_MS) {
         return;
     }
-    last_pwm_update = current_time;
+    last_value_change_time = current_time;
     
-    current_duty += duty_direction * PWM_STEP;
-    
-    if (current_duty >= 1000) {
-        current_duty = 1000;
-        duty_direction = -1;
-    } else if (current_duty <= 0) {
-        current_duty = 0;
-        duty_direction = 1;
-        
-        current_led_index = (current_led_index + 1) % led_count;
+    switch (current_mode) {
+        case MODE_HUE:
+            current_hsv.h = (current_hsv.h + 1) % 360;
+            break;
+        case MODE_SATURATION:
+            current_hsv.s = (current_hsv.s + 1) % 101;
+            break;
+        case MODE_BRIGHTNESS:
+            current_hsv.v = (current_hsv.v + 1) % 101;
+            break;
+        default:
+            break;
     }
     
-    update_pwm_output();
+    update_rgb_led();
 }
 
-/**
- * @brief
- */
+static void switch_to_next_mode(void)
+{
+    current_mode = (input_mode_t)((current_mode + 1) % 4);
+    last_mode_blink_time = millis();
+    mode_led_state = false;
+    update_mode_indicator();
+}
+
 static void gpiote_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 {
-    if (pin != BUTTON_PIN || action != NRF_GPIOTE_POLARITY_HITOLO) {
+    if (pin != BUTTON_PIN) {
         return;
     }
     
@@ -133,17 +215,7 @@ static void gpiote_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t ac
     if (waiting_for_second_click) {
         if (current_time - first_click_time < DOUBLE_CLICK_TIMEOUT_MS) {
             waiting_for_second_click = false;
-            
-            blinking_active = !blinking_active;
-            
-            if (blinking_active) {
-                current_led_index = 0;
-                current_duty = 0;
-                duty_direction = 1;
-                last_pwm_update = current_time;
-            }
-            
-            update_pwm_output();
+            switch_to_next_mode();
         } else {
             first_click_time = current_time;
             waiting_for_second_click = true;
@@ -154,12 +226,11 @@ static void gpiote_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t ac
     }
 }
 
-/**
- * @brief
- */
 static void gpiote_init(void)
 {
     nrfx_err_t err_code;
+    
+    nrf_gpio_cfg_input(BUTTON_PIN, NRF_GPIO_PIN_PULLUP);
     
     err_code = nrfx_gpiote_init();
     if (err_code != NRFX_SUCCESS && err_code != NRFX_ERROR_INVALID_STATE) {
@@ -175,15 +246,12 @@ static void gpiote_init(void)
     }
 }
 
-/**
- * @brief
- */
-static void pwm_init(void)
+static void pwm_rgb_init(void)
 {
     nrfx_pwm_config_t pwm_config = NRFX_PWM_DEFAULT_CONFIG;
-    pwm_config.output_pins[0] = LED_RED;
-    pwm_config.output_pins[1] = LED_BLUE;
-    pwm_config.output_pins[2] = LED_GREEN;
+    pwm_config.output_pins[0] = LED_2_RED;
+    pwm_config.output_pins[1] = LED_2_BLUE;
+    pwm_config.output_pins[2] = LED_2_GREEN;
     pwm_config.output_pins[3] = NRFX_PWM_PIN_NOT_USED;
     pwm_config.base_clock = NRF_PWM_CLK_1MHz;
     pwm_config.count_mode = NRF_PWM_MODE_UP;
@@ -191,43 +259,79 @@ static void pwm_init(void)
     pwm_config.load_mode = NRF_PWM_LOAD_INDIVIDUAL;
     pwm_config.step_mode = NRF_PWM_STEP_AUTO;
     
-    nrfx_err_t err_code = nrfx_pwm_init(&m_pwm, &pwm_config, NULL);
-    if (err_code != NRFX_SUCCESS) {
-        return;
-    }
+    nrfx_pwm_init(&m_pwm_rgb, &pwm_config, NULL);
     
-    pwm_values.channel_0 = PWM_TOP_VALUE;
-    pwm_values.channel_1 = PWM_TOP_VALUE;
-    pwm_values.channel_2 = PWM_TOP_VALUE;
-    pwm_values.channel_3 = 0;
+    pwm_rgb_values.channel_0 = 0;
+    pwm_rgb_values.channel_1 = 0;
+    pwm_rgb_values.channel_2 = 0;
+    pwm_rgb_values.channel_3 = 0;
     
-    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+    nrfx_pwm_simple_playback(&m_pwm_rgb, &pwm_rgb_seq, 1, NRFX_PWM_FLAG_LOOP);
 }
 
-/**
- * @brief
- */
+static void pwm_indicator_init(void)
+{
+    nrfx_pwm_config_t pwm_config = NRFX_PWM_DEFAULT_CONFIG;
+    pwm_config.output_pins[0] = LED_1_GREEN;
+    pwm_config.output_pins[1] = NRFX_PWM_PIN_NOT_USED;
+    pwm_config.output_pins[2] = NRFX_PWM_PIN_NOT_USED;
+    pwm_config.output_pins[3] = NRFX_PWM_PIN_NOT_USED;
+    pwm_config.base_clock = NRF_PWM_CLK_1MHz;
+    pwm_config.count_mode = NRF_PWM_MODE_UP;
+    pwm_config.top_value = PWM_TOP_VALUE;
+    pwm_config.load_mode = NRF_PWM_LOAD_INDIVIDUAL;
+    pwm_config.step_mode = NRF_PWM_STEP_AUTO;
+    
+    nrfx_pwm_init(&m_pwm_indicator, &pwm_config, NULL);
+    
+    pwm_indicator_values.channel_0 = 0;
+    pwm_indicator_values.channel_1 = 0;
+    pwm_indicator_values.channel_2 = 0;
+    pwm_indicator_values.channel_3 = 0;
+    
+    nrfx_pwm_simple_playback(&m_pwm_indicator, &pwm_indicator_seq, 1, NRFX_PWM_FLAG_LOOP);
+}
+
 int main(void)
 {
-    pwm_init();
+    current_hsv.h = (DEFAULT_HUE_PERCENT * 360) / 100;
+    current_hsv.s = 100;
+    current_hsv.v = 100;
+    
+    pwm_rgb_init();
+    pwm_indicator_init();
     gpiote_init();
     
-    pwm_values.channel_0 = 0;
-    pwm_values.channel_1 = 0;
-    pwm_values.channel_2 = 0;
-    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
-    nrf_delay_ms(100);
+    pwm_rgb_values.channel_0 = PWM_TOP_VALUE;
+    pwm_rgb_values.channel_1 = PWM_TOP_VALUE;
+    pwm_rgb_values.channel_2 = PWM_TOP_VALUE;
+    nrfx_pwm_simple_playback(&m_pwm_rgb, &pwm_rgb_seq, 1, NRFX_PWM_FLAG_LOOP);
     
-    pwm_values.channel_0 = PWM_TOP_VALUE;
-    pwm_values.channel_1 = PWM_TOP_VALUE;
-    pwm_values.channel_2 = PWM_TOP_VALUE;
-    nrfx_pwm_simple_playback(&m_pwm, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
+    pwm_indicator_values.channel_0 = PWM_TOP_VALUE;
+    nrfx_pwm_simple_playback(&m_pwm_indicator, &pwm_indicator_seq, 1, NRFX_PWM_FLAG_LOOP);
+    
+    nrf_delay_ms(200);
+    
+    pwm_rgb_values.channel_0 = 0;
+    pwm_rgb_values.channel_1 = 0;
+    pwm_rgb_values.channel_2 = 0;
+    nrfx_pwm_simple_playback(&m_pwm_rgb, &pwm_rgb_seq, 1, NRFX_PWM_FLAG_LOOP);
+    
+    pwm_indicator_values.channel_0 = 0;
+    nrfx_pwm_simple_playback(&m_pwm_indicator, &pwm_indicator_seq, 1, NRFX_PWM_FLAG_LOOP);
+    
+    nrf_delay_ms(200);
+    
+    update_rgb_led();
+    update_mode_indicator();
     
     system_ticks = 0;
-    last_pwm_update = 0;
+    last_mode_blink_time = 0;
+    last_value_change_time = 0;
     
     while (true) {
-        update_duty_cycle();
+        update_mode_indicator();
+        handle_value_change();
         
         if (waiting_for_second_click) {
             uint32_t current_time = millis();
