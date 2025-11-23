@@ -55,14 +55,13 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/experimental_section_vars \
   $(SDK_ROOT)/components/libraries/delay \
   $(SDK_ROOT)/integration/nrfx \
-  $(SDK_ROOT)/integration/nrfx/legacy \
   $(SDK_ROOT)/components/drivers_nrf/nrf_soc_nosd \
   $(SDK_ROOT)/components/libraries/atomic \
   $(SDK_ROOT)/components/boards \
   $(SDK_ROOT)/components/libraries/memobj \
   $(SDK_ROOT)/external/fprintf \
   $(SDK_ROOT)/components/libraries/log/src \
-  $(SDK_ROOT)/modules/nrfx/drivers/src/prs \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/prs
 
 # Libraries common to all targets
 LIB_FILES += \
@@ -82,9 +81,10 @@ CFLAGS += -DMBR_PRESENT
 CFLAGS += -DNRF52840_XXAA
 CFLAGS += -DNRFX_GPIOTE_ENABLED=1
 CFLAGS += -DNRFX_GPIOTE_CONFIG_IRQ_PRIORITY=6
-CFLAGS += -DNRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
+CFLAGS += -DNRFX_GPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=2
 CFLAGS += -DNRFX_PWM_ENABLED=1
 CFLAGS += -DNRFX_PWM0_ENABLED=1
+CFLAGS += -DNRFX_PWM1_ENABLED=1
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_IRQ_PRIORITY=6
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT0_PIN=31
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_OUT1_PIN=31
@@ -96,11 +96,11 @@ CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_TOP_VALUE=1000
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_LOAD_MODE=0
 CFLAGS += -DNRFX_PWM_DEFAULT_CONFIG_STEP_MODE=0
 CFLAGS += -DGPIOTE_ENABLED=1
-CFLAGS += -DGPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=1
+CFLAGS += -DGPIOTE_CONFIG_NUM_OF_LOW_POWER_EVENTS=2
 CFLAGS += -DNRFX_PRS_ENABLED=1
 CFLAGS += -DNRFX_PRS_BOX_0_ENABLED=1
+CFLAGS += -DNRFX_PRS_BOX_1_ENABLED=1
 CFLAGS += -DNRFX_PRS_CONFIG_IRQ_PRIORITY=6
-CFLAGS += -DNRFX_SYSTICK_ENABLED=1
 CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
 CFLAGS += -Wall -Werror
