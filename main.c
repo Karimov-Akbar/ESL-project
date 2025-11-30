@@ -6,6 +6,7 @@
 #include "hsv.h"
 #include "pwm_leds.h"
 #include "button.h"
+#include "storage.h"
 
 static volatile input_mode_t current_mode = MODE_NO_INPUT;
 static hsv_color_t current_hsv;
@@ -16,7 +17,6 @@ static volatile uint32_t system_ticks = 0;
 static uint32_t last_mode_blink_time = 0;
 static uint32_t last_value_change_time = 0;
 static bool mode_led_state = false;
-
 
 static uint32_t millis(void)
 {
@@ -67,6 +67,11 @@ static void update_mode_indicator(void)
 static void switch_to_next_mode(void)
 {
     current_mode = (input_mode_t)((current_mode + 1) % 4);
+    
+    if (current_mode == MODE_NO_INPUT) {
+        storage_save_hsv(&current_hsv);
+    }
+
     last_mode_blink_time = millis();
     mode_led_state = false;
     update_mode_indicator();
@@ -130,24 +135,23 @@ void button_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 
 int main(void)
 {
-    current_hsv.h = (DEFAULT_HUE_PERCENT * 360) / 100;
-    current_hsv.s = 100;
-    current_hsv.v = 100;
-    
     pwm_rgb_init();
     pwm_indicator_init();
     button_init(button_event_handler);
+    
+    if (!storage_read_hsv(&current_hsv)) {
+        current_hsv.h = (DEFAULT_HUE_PERCENT * 360) / 100;
+        current_hsv.s = 100;
+        current_hsv.v = 100;
+    }
+    update_rgb_led();
     
     pwm_set_rgb_values(PWM_TOP_VALUE, PWM_TOP_VALUE, PWM_TOP_VALUE);
     pwm_set_indicator_value(PWM_TOP_VALUE);
     nrf_delay_ms(200);
     
-    pwm_set_rgb_values(0, 0, 0);
-    pwm_set_indicator_value(0);
-    nrf_delay_ms(200);
-    
     update_rgb_led();
-    update_mode_indicator();
+    pwm_set_indicator_value(0);
     
     system_ticks = 0;
     
