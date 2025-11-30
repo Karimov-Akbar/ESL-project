@@ -32,10 +32,12 @@ SRC_FILES += \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_gpiote.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/prs/nrfx_prs.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_nvmc.c \
   $(PROJ_DIR)/main.c \
   $(PROJ_DIR)/src/button.c \
   $(PROJ_DIR)/src/hsv.c \
   $(PROJ_DIR)/src/pwm_leds.c \
+  $(PROJ_DIR)/src/storage.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c
 
 # Include folders common to all targets
@@ -112,6 +114,7 @@ CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
 # keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
+CFLAGS += -DNRFX_NVMC_ENABLED=1
 
 # C++ flags common to all targets
 CXXFLAGS += $(OPT)
