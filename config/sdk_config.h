@@ -3115,3 +3115,25 @@
 // <<< end of configuration section >>>
 #endif //SDK_CONFIG_H
 
+// ==========================================
+//
+// ==========================================
+
+#undef NRFX_CLOCK_ENABLED
+#define NRFX_CLOCK_ENABLED 1
+
+#undef CLOCK_ENABLED
+#define CLOCK_ENABLED 1
+
+#undef NRFX_CLOCK_CONFIG_LF_SRC
+#define NRFX_CLOCK_CONFIG_LF_SRC 0
+
+#undef NRFX_POWER_ENABLED
+#define NRFX_POWER_ENABLED 1
+
+#undef POWER_ENABLED
+#define POWER_ENABLED 1
+
+#undef NRFX_PRS_ENABLED
+#define NRFX_PRS_ENABLED 1
+
