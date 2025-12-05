@@ -32,9 +32,7 @@ void storage_save_hsv(const hsv_color_t *hsv) {
         return;
     }
 
-    if (current_data != 0xFFFFFFFF) {
-        nrfx_nvmc_page_erase(FLASH_STORAGE_ADDR);
-    }
+    nrfx_nvmc_page_erase(FLASH_STORAGE_ADDR);
 
     nrfx_nvmc_word_write(FLASH_STORAGE_ADDR, new_data);
     
