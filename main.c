@@ -1,4 +1,3 @@
-
 #include <stdbool.h>
 #include <stdint.h>
 #include "nrf_delay.h"
@@ -8,9 +7,12 @@
 #include "pwm_leds.h"
 #include "button.h"
 #include "storage.h"
+#include "usb_cli.h"
+#include "nrf_drv_clock.h"
 
 static volatile input_mode_t current_mode = MODE_NO_INPUT;
-static hsv_color_t current_hsv;
+hsv_color_t current_hsv;
+
 static volatile uint32_t last_button_time = 0;
 static volatile uint32_t first_click_time = 0;
 static volatile bool waiting_for_second_click = false;
@@ -24,11 +26,17 @@ static uint32_t millis(void)
     return system_ticks;
 }
 
-static void update_rgb_led(void)
+void update_rgb_led(void)
 {
     uint16_t r, g, b;
     hsv_to_rgb_simple(current_hsv.h, current_hsv.s, current_hsv.v, &r, &g, &b);
     pwm_set_rgb_values(r, g, b);
+}
+
+void update_hsv_state(hsv_color_t new_hsv)
+{
+    current_hsv = new_hsv;
+    update_rgb_led();
 }
 
 static void update_mode_indicator(void)
@@ -136,6 +144,14 @@ void button_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 
 int main(void)
 {
+    nrfx_err_t err_code = nrf_drv_clock_init();
+    if (err_code == NRFX_SUCCESS) {
+        nrf_drv_clock_lfclk_request(NULL);
+    }
+    nrf_drv_clock_hfclk_request(NULL);
+    while(!nrf_drv_clock_hfclk_is_running()) {
+    }
+
     pwm_rgb_init();
     pwm_indicator_init();
     button_init(button_event_handler);
@@ -146,7 +162,9 @@ int main(void)
         current_hsv.v = 100;
     }
     update_rgb_led();
-    
+
+    cli_init();
+
     pwm_set_rgb_values(PWM_TOP_VALUE, PWM_TOP_VALUE, PWM_TOP_VALUE);
     pwm_set_indicator_value(PWM_TOP_VALUE);
     nrf_delay_ms(200);
@@ -157,6 +175,8 @@ int main(void)
     system_ticks = 0;
     
     while (true) {
+        cli_process();
+
         update_mode_indicator();
         handle_value_change();
         
