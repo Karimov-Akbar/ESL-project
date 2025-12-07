@@ -38,6 +38,16 @@ SRC_FILES += \
   $(PROJ_DIR)/src/hsv.c \
   $(PROJ_DIR)/src/pwm_leds.c \
   $(PROJ_DIR)/src/storage.c \
+  $(PROJ_DIR)/src/usb_cli.c \
+  $(SDK_ROOT)/components/libraries/usbd/app_usbd.c \
+  $(SDK_ROOT)/components/libraries/usbd/class/cdc/acm/app_usbd_cdc_acm.c \
+  $(SDK_ROOT)/components/libraries/usbd/app_usbd_core.c \
+  $(SDK_ROOT)/components/libraries/usbd/app_usbd_serial_num.c \
+  $(SDK_ROOT)/components/libraries/usbd/app_usbd_string_desc.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_usbd.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
+  $(SDK_ROOT)/components/libraries/atomic_fifo/nrf_atfifo.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c
 
 # Include folders common to all targets
@@ -67,7 +77,13 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/memobj \
   $(SDK_ROOT)/external/fprintf \
   $(SDK_ROOT)/components/libraries/log/src \
-  $(SDK_ROOT)/modules/nrfx/drivers/src/prs
+  $(SDK_ROOT)/modules/nrfx/drivers/src/prs \
+  $(SDK_ROOT)/components/libraries/usbd \
+  $(SDK_ROOT)/components/libraries/usbd/class/cdc/acm \
+  $(SDK_ROOT)/components/libraries/usbd/class/cdc \
+  $(SDK_ROOT)/external/utf_converter \
+  $(SDK_ROOT)/components/libraries/atomic_fifo \
+  $(SDK_ROOT)/integration/nrfx/legacy \
 
 # Libraries common to all targets
 LIB_FILES += \
@@ -111,10 +127,49 @@ CFLAGS += -mcpu=cortex-m4
 CFLAGS += -mthumb -mabi=aapcs
 CFLAGS += -Wall -Werror
 CFLAGS += -mfloat-abi=hard -mfpu=fpv4-sp-d16
-# keep every function in a separate section, this allows linker to discard unused ones
 CFLAGS += -ffunction-sections -fdata-sections -fno-strict-aliasing
 CFLAGS += -fno-builtin -fshort-enums
 CFLAGS += -DNRFX_NVMC_ENABLED=1
+CFLAGS += -DAPP_USBD_ENABLED=1
+CFLAGS += -DAPP_USBD_CDC_ACM_ENABLED=1
+CFLAGS += -DNRFX_USBD_ENABLED=1
+CFLAGS += -DNRFX_CLOCK_ENABLED=1
+CFLAGS += -DNRF_CLOCK_ENABLED=1
+CFLAGS += -DAPP_USBD_VID=0x1915
+CFLAGS += -DAPP_USBD_PID=0x520F
+CFLAGS += -DNRFX_CLOCK_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_CLOCK_CONFIG_LF_SRC=1
+CFLAGS += -DNRFX_USBD_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DNRFX_POWER_ENABLED=0
+CFLAGS += -DNRFX_USBD_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DUSBD_CONFIG_IRQ_PRIORITY=6
+CFLAGS += -DUSBD_ENABLED=1
+CFLAGS += -DAPP_USBD_CDC_ACM_ZLP_ON_EPSIZE_WRITE=1
+CFLAGS += -DNRFX_USBD_CONFIG_DMASCHEDULER_ISO_BOOST=1
+CFLAGS += -DNRFX_USBD_CONFIG_ISO_IN_ZLP=1
+CFLAGS += -DAPP_USBD_CONFIG_EVENT_QUEUE_ENABLE=1
+CFLAGS += -DAPP_USBD_CONFIG_EVENT_QUEUE_SIZE=32
+CFLAGS += -DAPP_USBD_DEVICE_VER_MAJOR=1
+CFLAGS += -DAPP_USBD_DEVICE_VER_MINOR=0
+CFLAGS += -DAPP_USBD_DEVICE_VER_SUB=0
+CFLAGS += -DAPP_USBD_STRING_ID_MANUFACTURER=1
+CFLAGS += -DAPP_USBD_STRING_ID_PRODUCT=2
+CFLAGS += -DAPP_USBD_STRING_ID_SERIAL=3
+CFLAGS += -DAPP_USBD_STRING_ID_CONFIGURATION=4
+CFLAGS += -DAPP_USBD_MANUFACTURER_STRING=\"Nordic\"
+CFLAGS += -DAPP_USBD_PRODUCT_STRING=\"USB_CLI\"
+CFLAGS += -DAPP_USBD_SERIAL_NUMBER_STRING=\"123456\"
+CFLAGS += -DAPP_USBD_CONFIGURATION_STRING=\"Default\"
+CFLAGS += -DAPP_USBD_STRINGS_LANGIDS=0x0409
+CFLAGS += '-DAPP_USBD_STRINGS_MANUFACTURER=APP_USBD_STRING_DESC(APP_USBD_MANUFACTURER_STRING)'
+CFLAGS += '-DAPP_USBD_STRINGS_PRODUCT=APP_USBD_STRING_DESC(APP_USBD_PRODUCT_STRING)'
+CFLAGS += '-DAPP_USBD_STRINGS_CONFIGURATION=APP_USBD_STRING_DESC(APP_USBD_CONFIGURATION_STRING)'
+CFLAGS += '-DAPP_USBD_STRINGS_SERIAL=APP_USBD_STRING_DESC(APP_USBD_SERIAL_NUMBER_STRING)'
+CFLAGS += '-DAPP_USBD_STRING_SERIAL=APP_USBD_STRING_DESC(APP_USBD_SERIAL_NUMBER_STRING)'
+CFLAGS += -DAPP_USBD_STRINGS_USER=""
+CFLAGS += -DAPP_USBD_CONFIG_DESC_STRING_SIZE=31
+CFLAGS += -DAPP_USBD_CONFIG_MAX_POWER=100
+CFLAGS += -DAPP_USBD_CONFIG_SELF_POWERED=1
 
 # C++ flags common to all targets
 CXXFLAGS += $(OPT)
