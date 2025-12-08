@@ -42,10 +42,8 @@ static volatile uint16_t m_fifo_head = 0;
 static volatile uint16_t m_fifo_tail = 0;
 
 static char m_usb_rx_char;
-
 static char m_line_buffer[128];
 static uint8_t m_line_idx = 0;
-
 static char m_tx_buffer[512];
 
 static void fifo_put(char c) {
@@ -72,12 +70,15 @@ static void usb_send_blocking(const char *data, size_t len) {
     memcpy(m_tx_buffer, data, len);
     
     ret_code_t ret;
+    int timeout = 100000;
+    
     do {
         ret = app_usbd_cdc_acm_write(&m_app_cdc_acm, m_tx_buffer, len);
         if (ret == NRF_ERROR_BUSY) {
-            nrf_delay_us(500); 
+            nrf_delay_us(50); 
+            timeout--;
         }
-    } while (ret == NRF_ERROR_BUSY);
+    } while (ret == NRF_ERROR_BUSY && timeout > 0);
 }
 
 static void usb_print(const char *msg) {
@@ -153,7 +154,7 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     switch (event) {
         case APP_USBD_CDC_ACM_USER_EVT_PORT_OPEN:
             app_usbd_cdc_acm_read(&m_app_cdc_acm, &m_usb_rx_char, 1);
-            pwm_set_rgb_values(0, 0, 1000);
+            pwm_set_rgb_values(0, 0, 1000); 
             break;
             
         case APP_USBD_CDC_ACM_USER_EVT_PORT_CLOSE:
@@ -163,7 +164,6 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
         case APP_USBD_CDC_ACM_USER_EVT_RX_DONE:
         {
             fifo_put(m_usb_rx_char);
-            
             app_usbd_cdc_acm_read(&m_app_cdc_acm, &m_usb_rx_char, 1);
             break;
         }
@@ -203,6 +203,7 @@ void cli_init(void)
     app_usbd_serial_num_generate();
     app_usbd_init(&usbd_config);
     app_usbd_class_append(app_usbd_cdc_acm_class_inst_get(&m_app_cdc_acm));
+    
     app_usbd_enable();
     app_usbd_start();
 }
@@ -215,14 +216,12 @@ void cli_process(void)
     char c;
     while (fifo_get(&c)) {
         
-        pwm_set_rgb_values(0, 1000, 0); 
-
         if (c != '\r' && c != '\n') {
              usb_send_blocking(&c, 1);
         }
 
         if (c == '\r' || c == '\n') {
-            m_line_buffer[m_line_idx] = 0;
+            m_line_buffer[m_line_idx] = 0; 
             if (m_line_idx > 0) {
                 process_command(m_line_buffer);
             } else {
