@@ -48,6 +48,8 @@ SRC_FILES += \
   $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_clock.c \
   $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_clock.c \
   $(SDK_ROOT)/components/libraries/atomic_fifo/nrf_atfifo.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_power.c \
+  $(SDK_ROOT)/integration/nrfx/legacy/nrf_drv_power.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c
 
 # Include folders common to all targets
@@ -140,7 +142,9 @@ CFLAGS += -DAPP_USBD_PID=0x520F
 CFLAGS += -DNRFX_CLOCK_CONFIG_IRQ_PRIORITY=6
 CFLAGS += -DNRFX_CLOCK_CONFIG_LF_SRC=1
 CFLAGS += -DNRFX_USBD_CONFIG_IRQ_PRIORITY=6
-CFLAGS += -DNRFX_POWER_ENABLED=0
+CFLAGS += -DNRFX_POWER_ENABLED=1
+CFLAGS += -DNRF_POWER_ENABLED=1
+CFLAGS += -DNRFX_POWER_CONFIG_IRQ_PRIORITY=6
 CFLAGS += -DNRFX_USBD_CONFIG_IRQ_PRIORITY=6
 CFLAGS += -DUSBD_CONFIG_IRQ_PRIORITY=6
 CFLAGS += -DUSBD_ENABLED=1
