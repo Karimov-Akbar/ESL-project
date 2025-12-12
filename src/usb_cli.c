@@ -7,16 +7,19 @@
 #include "hsv.h"
 #include "pwm_leds.h"
 #include "nrf_delay.h"
+#include "storage.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <strings.h>
 #include <stdbool.h>
+#include <stdarg.h>
 
 bool app_usbd_event_queue_process(void);
 
 extern void update_hsv_state(hsv_color_t new_hsv);
+extern hsv_color_t current_hsv;
 
 static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
                                     app_usbd_cdc_acm_user_event_t event);
@@ -85,8 +88,16 @@ static void usb_print(const char *msg) {
     usb_send_blocking(msg, strlen(msg));
 }
 
+static void usb_printf(const char *fmt, ...) {
+    char buf[128];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    usb_print(buf);
+}
+
 static void process_command(char *cmd) {
-    char temp_resp[128]; 
     char *token = strtok(cmd, " \r\n");
 
     if (token == NULL) {
@@ -95,51 +106,114 @@ static void process_command(char *cmd) {
     }
 
     if (strcasecmp(token, "help") == 0) {
-        usb_print("\r\nSupported commands:\r\n"
-                  "  RGB <r> <g> <b>    Set RGB (0-1000)\r\n"
-                  "  HSV <h> <s> <v>    Set HSV (0-360, 0-100, 0-100)\r\n"
-                  "  help               Show help\r\n");
+        usb_print("\r\nCommands:\r\n"
+                  "  RGB <r> <g> <b>                    Set RGB\r\n"
+                  "  HSV <h> <s> <v>                    Set HSV\r\n"
+                  "  add_rgb_color <r> <g> <b> <name>   Save RGB\r\n"
+                  "  add_hsv_color <h> <s> <v> <name>   Save HSV\r\n"
+                  "  add_current_color <name>           Save current\r\n"
+                  "  del_color <name>                   Delete\r\n"
+                  "  apply_color <name>                 Load\r\n"
+                  "  list_colors                        Show saved\r\n");
     } 
     else if (strcasecmp(token, "RGB") == 0) {
         int r = -1, g = -1, b = -1;
-        char *arg1 = strtok(NULL, " ");
-        char *arg2 = strtok(NULL, " ");
+        char *arg1 = strtok(NULL, " "); 
+        char *arg2 = strtok(NULL, " "); 
         char *arg3 = strtok(NULL, " ");
-
-        if (arg1) r = atoi(arg1);
-        if (arg2) g = atoi(arg2);
+        
+        if (arg1) r = atoi(arg1); 
+        if (arg2) g = atoi(arg2); 
         if (arg3) b = atoi(arg3);
 
         if (r >= 0 && r <= 1000 && g >= 0 && g <= 1000 && b >= 0 && b <= 1000) {
-            hsv_color_t new_hsv;
-            rgb_to_hsv_simple(r, g, b, &new_hsv.h, &new_hsv.s, &new_hsv.v);
-            update_hsv_state(new_hsv);
-            
-            sprintf(temp_resp, "\r\nColor set to R=%d G=%d B=%d\r\n", r, g, b);
-            usb_print(temp_resp);
-        } else {
-            usb_print("\r\nError: RGB values must be 0-1000\r\n");
-        }
+            hsv_color_t hsv;
+            rgb_to_hsv_simple(r, g, b, &hsv.h, &hsv.s, &hsv.v);
+            update_hsv_state(hsv);
+            usb_printf("\r\nSet RGB: %d %d %d\r\n", r, g, b);
+        } else usb_print("\r\nInvalid RGB\r\n");
     }
     else if (strcasecmp(token, "HSV") == 0) {
         int h = -1, s = -1, v = -1;
-        char *arg1 = strtok(NULL, " ");
-        char *arg2 = strtok(NULL, " ");
+        char *arg1 = strtok(NULL, " "); 
+        char *arg2 = strtok(NULL, " "); 
         char *arg3 = strtok(NULL, " ");
-
-        if (arg1) h = atoi(arg1);
-        if (arg2) s = atoi(arg2);
+        
+        if (arg1) h = atoi(arg1); 
+        if (arg2) s = atoi(arg2); 
         if (arg3) v = atoi(arg3);
 
         if (h >= 0 && h <= 360 && s >= 0 && s <= 100 && v >= 0 && v <= 100) {
-            hsv_color_t new_hsv = { (uint16_t)h, (uint8_t)s, (uint8_t)v };
-            update_hsv_state(new_hsv);
+            hsv_color_t hsv = { (uint16_t)h, (uint8_t)s, (uint8_t)v };
+            update_hsv_state(hsv);
+            usb_printf("\r\nSet HSV: %d %d %d\r\n", h, s, v);
+        } else usb_print("\r\nInvalid HSV\r\n");
+    }
+    else if (strcasecmp(token, "add_rgb_color") == 0) {
+        int r = -1, g = -1, b = -1;
+        char *arg1 = strtok(NULL, " "); 
+        char *arg2 = strtok(NULL, " "); 
+        char *arg3 = strtok(NULL, " "); 
+        char *name = strtok(NULL, " ");
+        
+        if (arg1) r = atoi(arg1); 
+        if (arg2) g = atoi(arg2); 
+        if (arg3) b = atoi(arg3);
 
-            sprintf(temp_resp, "\r\nColor set to H=%d S=%d V=%d\r\n", h, s, v);
-            usb_print(temp_resp);
-        } else {
-            usb_print("\r\nError: Use H:0-360, S:0-100, V:0-100\r\n");
-        }
+        if (r >= 0 && r <= 1000 && g >= 0 && g <= 1000 && b >= 0 && b <= 1000 && name) {
+            hsv_color_t hsv;
+            rgb_to_hsv_simple(r, g, b, &hsv.h, &hsv.s, &hsv.v);
+            storage_save_current_hsv(&current_hsv);
+            if(storage_add_color(name, &hsv)) usb_print("\r\nSaved.\r\n");
+            else usb_print("\r\nFailed (Full?)\r\n");
+        } else usb_print("\r\nUsage: add_rgb_color <r> <g> <b> <name>\r\n");
+    }
+    else if (strcasecmp(token, "add_hsv_color") == 0) {
+        int h = -1, s = -1, v = -1;
+        char *arg1 = strtok(NULL, " "); 
+        char *arg2 = strtok(NULL, " "); 
+        char *arg3 = strtok(NULL, " "); 
+        char *name = strtok(NULL, " ");
+        
+        if (arg1) h = atoi(arg1); 
+        if (arg2) s = atoi(arg2); 
+        if (arg3) v = atoi(arg3);
+
+        if (h >= 0 && h <= 360 && s >= 0 && s <= 100 && v >= 0 && v <= 100 && name) {
+            hsv_color_t hsv = { (uint16_t)h, (uint8_t)s, (uint8_t)v };
+            storage_save_current_hsv(&current_hsv);
+            if(storage_add_color(name, &hsv)) usb_print("\r\nSaved.\r\n");
+            else usb_print("\r\nFailed (Full?)\r\n");
+        } else usb_print("\r\nUsage: add_hsv_color <h> <s> <v> <name>\r\n");
+    }
+    else if (strcasecmp(token, "add_current_color") == 0) {
+        char *name = strtok(NULL, " ");
+        if (name) {
+            storage_save_current_hsv(&current_hsv);
+            if(storage_add_color(name, &current_hsv)) usb_print("\r\nSaved current.\r\n");
+            else usb_print("\r\nFailed (Full?)\r\n");
+        } else usb_print("\r\nUsage: add_current_color <name>\r\n");
+    }
+    else if (strcasecmp(token, "del_color") == 0) {
+        char *name = strtok(NULL, " ");
+        if (name) {
+            if(storage_del_color(name)) usb_print("\r\nDeleted.\r\n");
+            else usb_print("\r\nNot found.\r\n");
+        } else usb_print("\r\nUsage: del_color <name>\r\n");
+    }
+    else if (strcasecmp(token, "apply_color") == 0) {
+        char *name = strtok(NULL, " ");
+        hsv_color_t hsv;
+        if (name) {
+            if(storage_get_color(name, &hsv)) {
+                update_hsv_state(hsv);
+                storage_save_current_hsv(&current_hsv);
+                usb_print("\r\nApplied.\r\n");
+            } else usb_print("\r\nNot found.\r\n");
+        } else usb_print("\r\nUsage: apply_color <name>\r\n");
+    }
+    else if (strcasecmp(token, "list_colors") == 0) {
+        storage_list_colors(usb_printf);
     }
     else {
         usb_print("\r\nUnknown command\r\n");
@@ -154,7 +228,7 @@ static void cdc_acm_user_ev_handler(app_usbd_class_inst_t const * p_inst,
     switch (event) {
         case APP_USBD_CDC_ACM_USER_EVT_PORT_OPEN:
             app_usbd_cdc_acm_read(&m_app_cdc_acm, &m_usb_rx_char, 1);
-            pwm_set_rgb_values(0, 0, 1000); 
+            pwm_set_rgb_values(0, 0, 1000);
             break;
             
         case APP_USBD_CDC_ACM_USER_EVT_PORT_CLOSE:
@@ -203,7 +277,6 @@ void cli_init(void)
     app_usbd_serial_num_generate();
     app_usbd_init(&usbd_config);
     app_usbd_class_append(app_usbd_cdc_acm_class_inst_get(&m_app_cdc_acm));
-    
     app_usbd_enable();
     app_usbd_start();
 }
