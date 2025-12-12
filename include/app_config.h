@@ -19,6 +19,9 @@
 #define MODE_BLINK_FAST_MS       200
 #define VALUE_CHANGE_INTERVAL_MS 50
 
+#define MAX_SAVED_COLORS    10
+#define COLOR_NAME_MAX_LEN  16
+
 typedef enum {
     MODE_NO_INPUT = 0,
     MODE_HUE,
