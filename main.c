@@ -9,6 +9,7 @@
 #include "storage.h"
 #include "usb_cli.h"
 #include "nrf_drv_clock.h"
+#include "nrfx_power.h"
 
 static volatile input_mode_t current_mode = MODE_NO_INPUT;
 hsv_color_t current_hsv;
@@ -78,7 +79,7 @@ static void switch_to_next_mode(void)
     current_mode = (input_mode_t)((current_mode + 1) % 4);
     
     if (current_mode == MODE_NO_INPUT) {
-        storage_save_hsv(&current_hsv);
+        storage_save_current_hsv(&current_hsv);
     }
 
     last_mode_blink_time = millis();
@@ -144,19 +145,23 @@ void button_event_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
 
 int main(void)
 {
+    const nrfx_power_config_t pwr_config = { 0 };
+    nrfx_power_init(&pwr_config);
+
     nrfx_err_t err_code = nrf_drv_clock_init();
     if (err_code == NRFX_SUCCESS) {
         nrf_drv_clock_lfclk_request(NULL);
     }
     nrf_drv_clock_hfclk_request(NULL);
-    while(!nrf_drv_clock_hfclk_is_running()) {
-    }
+    while(!nrf_drv_clock_hfclk_is_running()) {}
 
     pwm_rgb_init();
     pwm_indicator_init();
     button_init(button_event_handler);
     
-    if (!storage_read_hsv(&current_hsv)) {
+    storage_init();
+    
+    if (!storage_get_last_hsv(&current_hsv)) {
         current_hsv.h = (DEFAULT_HUE_PERCENT * 360) / 100;
         current_hsv.s = 100;
         current_hsv.v = 100;
@@ -176,7 +181,6 @@ int main(void)
     
     while (true) {
         cli_process();
-
         update_mode_indicator();
         handle_value_change();
         
